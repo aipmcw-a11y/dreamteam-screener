@@ -225,8 +225,8 @@ max_stocks = st.sidebar.number_input(
     "최대 분석 종목 수",
     min_value=10,
     max_value=3000,
-    value=100,
-    step=50
+    value=200,
+    step=100
 )
 
 # 예상 시간 표시
@@ -424,4 +424,5 @@ st.sidebar.info("""
 **모바일 접속:**
 - PC에서 실행 후 표시되는 URL로 모바일 접속
 - 같은 Wi-Fi 네트워크 필요
+
 """)
