@@ -278,6 +278,11 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
         elif "KOSDAQ" in market_options:
             cap_df = pykrx_stock.get_market_cap(today, market="KOSDAQ")
         
+        # 디버깅: 실제 컬럼명 확인
+        if cap_df is not None and len(cap_df) > 0:
+            st.write("📊 반환된 컬럼명:", cap_df.columns.tolist())
+            st.write("📊 데이터 샘플:", cap_df.head(3))
+        
         # 컬럼명 확인 및 정렬
         if cap_df is not None and len(cap_df) > 0:
             # 시가총액 컬럼 찾기 (여러 가능성 시도)
@@ -293,7 +298,7 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
                 sorted_symbols = [s for s in cap_df.index if s in all_symbols][:max_stocks]
             else:
                 # 컬럼을 찾지 못하면 원본 순서
-                st.warning(f"시가총액 컬럼을 찾을 수 없습니다. 컬럼: {cap_df.columns.tolist()}")
+                st.warning(f"⚠️ 시가총액 컬럼을 찾을 수 없습니다.")
                 sorted_symbols = all_symbols[:max_stocks]
         else:
             sorted_symbols = all_symbols[:max_stocks]
