@@ -267,9 +267,9 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
     st.info("시가총액 순으로 정렬 중...")
     
     try:
-        # 최근 거래일 찾기 (최대 7일 전까지)
+        # 최근 거래일 찾기 (1일 전부터 최대 10일 전까지)
         target_date = None
-        for i in range(7):
+        for i in range(1, 10):  # 오늘은 제외하고 어제부터
             check_date = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
             try:
                 test_df = pykrx_stock.get_market_cap(check_date, market="KOSPI")
@@ -297,7 +297,7 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
                 cap_df = cap_df[cap_df['시가총액'] > 0]
                 cap_df = cap_df.sort_values('시가총액', ascending=False)
                 sorted_symbols = [s for s in cap_df.index if s in all_symbols][:max_stocks]
-                st.success(f"시총 기준일: {target_date}")
+                st.success(f"✓ 시총 기준일: {target_date[:4]}-{target_date[4:6]}-{target_date[6:]}")
             else:
                 sorted_symbols = all_symbols[:max_stocks]
         
