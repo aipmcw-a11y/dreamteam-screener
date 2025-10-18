@@ -225,7 +225,7 @@ max_stocks = st.sidebar.number_input(
     "최대 분석 종목 수",
     min_value=10,
     max_value=3000,
-    value=50,  # 기본값을 50으로 변경
+    value=200,
     step=50
 )
 
@@ -263,8 +263,28 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
     # 중복 제거
     all_symbols = list(set(all_symbols))
     
-    # 종목 리스트 준비 (시총 정렬 없이 원본 순서)
-    sorted_symbols = all_symbols[:max_stocks]
+    # 시총순 정렬
+    st.info("시가총액 순으로 정렬 중...")
+    
+    try:
+        # 시장별 시총 데이터 가져오기
+        cap_df = None
+        if "KOSPI" in market_options and "KOSDAQ" in market_options:
+            cap_kospi = pykrx_stock.get_market_cap(today, market="KOSPI")
+            cap_kosdaq = pykrx_stock.get_market_cap(today, market="KOSDAQ")
+            cap_df = pd.concat([cap_kospi, cap_kosdaq])
+        elif "KOSPI" in market_options:
+            cap_df = pykrx_stock.get_market_cap(today, market="KOSPI")
+        elif "KOSDAQ" in market_options:
+            cap_df = pykrx_stock.get_market_cap(today, market="KOSDAQ")
+        
+        # 시총 기준 정렬
+        cap_df = cap_df.sort_values('시가총액', ascending=False)
+        sorted_symbols = [s for s in cap_df.index if s in all_symbols][:max_stocks]
+        
+    except Exception as e:
+        st.warning(f"시총 정렬 실패: {str(e)}. 원본 순서로 진행합니다.")
+        sorted_symbols = all_symbols[:max_stocks]
     
     # 스크리너 초기화
     screener = DreamTeamScreener()
@@ -401,7 +421,4 @@ st.sidebar.info("""
 2. '스크리닝 시작' 버튼 클릭
 3. 결과 확인 및 CSV 다운로드
 
-**모바일 접속:**
-- PC에서 실행 후 표시되는 URL로 모바일 접속
-- 같은 Wi-Fi 네트워크 필요
 """)
