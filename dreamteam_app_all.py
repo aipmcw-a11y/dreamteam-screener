@@ -278,28 +278,11 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
         elif "KOSDAQ" in market_options:
             cap_df = pykrx_stock.get_market_cap(today, market="KOSDAQ")
         
-        # 디버깅: 실제 컬럼명 확인
+        # 시가총액이 0인 종목 제거 및 정렬
         if cap_df is not None and len(cap_df) > 0:
-            st.write("📊 반환된 컬럼명:", cap_df.columns.tolist())
-            st.write("📊 데이터 샘플:", cap_df.head(3))
-        
-        # 컬럼명 확인 및 정렬
-        if cap_df is not None and len(cap_df) > 0:
-            # 시가총액 컬럼 찾기 (여러 가능성 시도)
-            possible_cols = ['시가총액', '시총', 'MarketCap', '시가총액(원)']
-            cap_col = None
-            for col in possible_cols:
-                if col in cap_df.columns:
-                    cap_col = col
-                    break
-            
-            if cap_col:
-                cap_df = cap_df.sort_values(cap_col, ascending=False)
-                sorted_symbols = [s for s in cap_df.index if s in all_symbols][:max_stocks]
-            else:
-                # 컬럼을 찾지 못하면 원본 순서
-                st.warning(f"⚠️ 시가총액 컬럼을 찾을 수 없습니다.")
-                sorted_symbols = all_symbols[:max_stocks]
+            cap_df = cap_df[cap_df['시가총액'] > 0]  # 시가총액이 0보다 큰 종목만
+            cap_df = cap_df.sort_values('시가총액', ascending=False)
+            sorted_symbols = [s for s in cap_df.index if s in all_symbols][:max_stocks]
         else:
             sorted_symbols = all_symbols[:max_stocks]
         
@@ -442,7 +425,4 @@ st.sidebar.info("""
 2. '스크리닝 시작' 버튼 클릭
 3. 결과 확인 및 CSV 다운로드
 
-**모바일 접속:**
-- PC에서 실행 후 표시되는 URL로 모바일 접속
-- 같은 Wi-Fi 네트워크 필요
 """)
