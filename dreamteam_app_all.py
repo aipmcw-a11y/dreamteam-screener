@@ -225,8 +225,8 @@ max_stocks = st.sidebar.number_input(
     "최대 분석 종목 수",
     min_value=10,
     max_value=3000,
-    value=200,
-    step=100
+    value=50,  # 기본값을 50으로 변경
+    step=50
 )
 
 # 예상 시간 표시
@@ -278,9 +278,25 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
         elif "KOSDAQ" in market_options:
             cap_df = pykrx_stock.get_market_cap(today, market="KOSDAQ")
         
-        # 시총 기준 정렬
-        cap_df = cap_df.sort_values('시가총액', ascending=False)
-        sorted_symbols = [s for s in cap_df.index if s in all_symbols][:max_stocks]
+        # 컬럼명 확인 및 정렬
+        if cap_df is not None and len(cap_df) > 0:
+            # 시가총액 컬럼 찾기 (여러 가능성 시도)
+            possible_cols = ['시가총액', '시총', 'MarketCap', '시가총액(원)']
+            cap_col = None
+            for col in possible_cols:
+                if col in cap_df.columns:
+                    cap_col = col
+                    break
+            
+            if cap_col:
+                cap_df = cap_df.sort_values(cap_col, ascending=False)
+                sorted_symbols = [s for s in cap_df.index if s in all_symbols][:max_stocks]
+            else:
+                # 컬럼을 찾지 못하면 원본 순서
+                st.warning(f"시가총액 컬럼을 찾을 수 없습니다. 컬럼: {cap_df.columns.tolist()}")
+                sorted_symbols = all_symbols[:max_stocks]
+        else:
+            sorted_symbols = all_symbols[:max_stocks]
         
     except Exception as e:
         st.warning(f"시총 정렬 실패: {str(e)}. 원본 순서로 진행합니다.")
@@ -421,6 +437,7 @@ st.sidebar.info("""
 2. '스크리닝 시작' 버튼 클릭
 3. 결과 확인 및 CSV 다운로드
 
-
+**모바일 접속:**
+- PC에서 실행 후 표시되는 URL로 모바일 접속
+- 같은 Wi-Fi 네트워크 필요
 """)
-
