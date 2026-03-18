@@ -2,83 +2,10 @@ import streamlit as st
 from pykrx import stock
 import pandas as pd
 import numpy as np
+import requests
 from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
-
-# ── 디버그 3단계 ──
-from pykrx import stock as _s
-import pandas as pd
-
-st.subheader("🔍 시총 raw 확인")
-
-_today = "20260318"
-
-# try/except 없이 직접 실행해서 실제 반환값 확인
-try:
-    df = _s.get_market_cap_by_ticker(_today, market="KOSPI")
-    st.write(f"shape: {df.shape}")
-    st.write(f"columns: {df.columns.tolist()}")
-    st.write(f"index type: {type(df.index)}")
-    st.write(f"index 앞 3개: {df.index[:3].tolist()}")
-    st.dataframe(df.head(3))
-except Exception as e:
-    st.write(f"에러 타입: {type(e).__name__}")
-    st.write(f"에러 전문: {str(e)}")
-    # 에러가 나도 반환값이 있을 수 있으니 확인
-    import traceback
-    st.code(traceback.format_exc())
-    
-# ── 디버그 2단계 ──
-from pykrx import stock as _s
-import requests
-
-st.subheader("🔍 pykrx 원시 데이터 확인")
-
-# pykrx가 내부적으로 호출하는 URL 직접 조회
-try:
-    # 실제 컬럼 확인을 위해 예외 발생 전 raw DataFrame 보기
-    import pykrx.stock.market.ticker as _ticker
-    _today = "20260318"
-    
-    # OHLCV는 정상인지 확인
-    df_ohlcv = _s.get_market_ohlcv_by_date("20260318", "20260318", "005930")
-    st.write(f"삼성전자 OHLCV 컬럼: {df_ohlcv.columns.tolist()}")
-    st.write(df_ohlcv.tail(2))
-    
-except Exception as e:
-    st.write(f"오류: {e}")
-
-# pykrx 버전 확인
-import pykrx
-st.write(f"pykrx 버전: {pykrx.__version__}")
-
-
-# ── 디버그용 (확인 후 삭제) ──
-from pykrx import stock as _s
-from datetime import datetime, timedelta
-
-st.subheader("🔍 pykrx 디버그")
-_today = datetime.now().strftime("%Y%m%d")
-_yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
-_3days = (datetime.now() - timedelta(days=3)).strftime("%Y%m%d")
-
-for _date in [_today, _yesterday, _3days]:
-    st.write(f"--- {_date} ---")
-    
-    # 신버전 시도
-    try:
-        df1 = _s.get_market_cap_by_ticker(_date, market="KOSPI")
-        st.write(f"get_market_cap_by_ticker: shape={df1.shape}, columns={df1.columns.tolist()[:5]}")
-    except Exception as e:
-        st.write(f"get_market_cap_by_ticker 실패: {e}")
-    
-    # 구버전 시도
-    try:
-        df2 = _s.get_market_cap(_date, market="KOSPI")
-        st.write(f"get_market_cap: shape={df2.shape}, columns={df2.columns.tolist()[:5]}, index샘플={df2.index[:3].tolist()}")
-    except Exception as e:
-        st.write(f"get_market_cap 실패: {e}")
 
 st.set_page_config(page_title="드림팀 스크리너", page_icon="📈", layout="wide")
 
@@ -101,36 +28,88 @@ def normalize_ohlcv(df):
 
 def fetch_market_cap_df(market="KOSPI", lookback=10):
     """
-    pykrx 버전에 무관하게 종목별 시총 DataFrame 반환.
-    - 신버전: get_market_cap_by_ticker(date, market) → index=종목코드
-    - 구버전: get_market_cap(date, market)           → index=종목코드
-    오늘이 휴장일이면 최근 거래일을 자동 탐색.
-    반환 컬럼은 항상 '시가총액' 으로 통일.
+    KRX 에 직접 HTTP 요청해서 종목별 시총 DataFrame 반환.
+    pykrx 버전에 전혀 영향받지 않음.
+    반환: index=종목코드(6자리), '시가총액' 컬럼 포함 DataFrame
     """
+    # KRX OTP 발급 → 데이터 다운로드 2단계 방식
+    OTP_URL  = "http://data.krx.co.kr/comm/fileDn/GenerateOTP/generate.cmd"
+    DATA_URL = "http://data.krx.co.kr/comm/fileDn/download_csv/download.cmd"
+
+    HEADERS = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer":    "http://data.krx.co.kr/",
+    }
+
+    # 시장 코드 매핑
+    mkt_id = "STK" if market == "KOSPI" else "KSQ"
+
     for i in range(lookback):
         date_str = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
-
-        # 1) 신버전 시도
         try:
-            df = stock.get_market_cap_by_ticker(date_str, market=market)
-            if df is not None and len(df) > 0:
-                if 'Marcap' in df.columns:
-                    df = df.rename(columns={'Marcap': '시가총액'})
-                if '시가총액' in df.columns:
-                    return df
-        except Exception:
-            pass
+            # 1단계: OTP 발급
+            otp_params = {
+                "bld":      "dbms/MDC/STAT/standard/MDCSTAT01501",
+                "mktId":    mkt_id,
+                "trdDd":    date_str,
+                "share":    "1",
+                "money":    "1",
+                "csvxls_isNo": "false",
+            }
+            otp_resp = requests.post(OTP_URL, data=otp_params, headers=HEADERS, timeout=10)
+            otp_code = otp_resp.text.strip()
 
-        # 2) 구버전 fallback
-        try:
-            df = stock.get_market_cap(date_str, market=market)
-            if df is not None and len(df) > 0:
-                if 'Marcap' in df.columns:
-                    df = df.rename(columns={'Marcap': '시가총액'})
-                if '시가총액' in df.columns:
-                    return df
+            if not otp_code:
+                continue
+
+            # 2단계: CSV 다운로드
+            data_resp = requests.post(
+                DATA_URL,
+                data={"code": otp_code},
+                headers=HEADERS,
+                timeout=15
+            )
+            data_resp.encoding = "euc-kr"
+
+            from io import StringIO
+            df = pd.read_csv(StringIO(data_resp.text), thousands=",")
+
+            if df.empty:
+                continue
+
+            # 컬럼 확인 및 정리
+            # 종목코드 컬럼 찾기 (여러 이름 가능)
+            code_col = None
+            for c in ['종목코드', 'ISU_SRT_CD', '단축코드']:
+                if c in df.columns:
+                    code_col = c
+                    break
+
+            cap_col = None
+            for c in ['시가총액', 'MKTCAP', '시가 총액']:
+                if c in df.columns:
+                    cap_col = c
+                    break
+
+            if code_col is None or cap_col is None:
+                continue
+
+            df[code_col] = df[code_col].astype(str).str.zfill(6)
+            df = df.set_index(code_col)
+            df = df.rename(columns={cap_col: '시가총액'})
+
+            # 시가총액을 숫자로 변환
+            df['시가총액'] = pd.to_numeric(
+                df['시가총액'].astype(str).str.replace(',', '').str.replace(' ', ''),
+                errors='coerce'
+            )
+            df = df.dropna(subset=['시가총액'])
+
+            if len(df) > 0:
+                return df
+
         except Exception:
-            pass
+            continue
 
     return None
 
@@ -164,7 +143,7 @@ class DreamTeamScreener:
         dm_minus[(down_move > up_move)   & (down_move > 0)] = down_move
 
         atr               = tr.ewm(span=period, adjust=False).mean()
-        smoothed_dm_plus  = dm_plus.ewm (span=period, adjust=False).mean()
+        smoothed_dm_plus  = dm_plus.ewm(span=period, adjust=False).mean()
         smoothed_dm_minus = dm_minus.ewm(span=period, adjust=False).mean()
 
         di_plus  = 100 * smoothed_dm_plus  / atr
@@ -185,11 +164,11 @@ class DreamTeamScreener:
 
     def check_condition1_dmi_adx(self, di_plus, di_minus, adx):
         """조건 1 확인"""
-        results              = []
-        signal_dates         = []
-        signal_adx_values    = []
+        results                = []
+        signal_dates           = []
+        signal_adx_values      = []
         signal_di_minus_values = []
-        adx_decline_dates    = []
+        adx_decline_dates      = []
 
         lookback_period = 30
 
@@ -376,7 +355,7 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
 
     all_symbols = list(set(all_symbols))
 
-    # 시총 순 정렬
+    # 시총 순 정렬 (KRX 직접 요청)
     st.info("시가총액 순으로 정렬 중...")
     try:
         frames = []
