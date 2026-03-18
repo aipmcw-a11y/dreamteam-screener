@@ -6,60 +6,6 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
-# ── 디버그 9단계 ──
-from pykrx import stock as _s
-
-st.subheader("🔍 인덱스 종목 탐색")
-
-# 코스피/코스닥 인덱스 티커 목록 조회
-try:
-    # 1) 전체 인덱스 리스트
-    idx_list = _s.get_index_ticker_list(market="KOSPI")
-    st.write(f"KOSPI 인덱스 목록: {idx_list[:10]}")
-except Exception as e:
-    st.write(f"get_index_ticker_list(market=KOSPI) 실패: {e}")
-
-try:
-    idx_list2 = _s.get_index_ticker_list(market="KRX")
-    st.write(f"KRX 인덱스 목록: {idx_list2[:10]}")
-except Exception as e:
-    st.write(f"get_index_ticker_list(market=KRX) 실패: {e}")
-
-# 2) 코스피 200 구성종목 시도 (티커 "1028" = 코스피200)
-for idx_ticker in ["1028", "2203", "1001", "2001"]:
-    try:
-        members = _s.get_index_portfolio_deposit_file(idx_ticker)
-        st.write(f"인덱스 {idx_ticker}: {len(members)}개 → {list(members)[:5]}")
-    except Exception as e:
-        st.write(f"인덱스 {idx_ticker} 실패: {e}")
-
-# 3) get_market_ohlcv_by_ticker 시도 (날짜 범위로 전종목)
-try:
-    df = _s.get_market_ohlcv_by_ticker("20260318", market="KOSPI")
-    st.write(f"get_market_ohlcv_by_ticker KOSPI: shape={df.shape}, 샘플={df.index[:5].tolist()}")
-except Exception as e:
-    st.write(f"get_market_ohlcv_by_ticker 실패: {e}")
-    
-# ── 디버그 8단계 ──
-from pykrx import stock as _s
-import inspect
-
-st.subheader("🔍 pykrx 함수 탐색")
-
-# ticker/list 관련 함수 목록
-funcs = [name for name in dir(_s) if any(k in name.lower() for k in ['ticker','list','index','constituent'])]
-st.write("관련 함수 목록:", funcs)
-
-# get_index_ticker_list 시도 (코스피200 등 인덱스 구성종목)
-st.write("---")
-for func_name in ['get_index_ticker_list', 'get_market_ticker_list']:
-    try:
-        func = getattr(_s, func_name)
-        result = func("20260318")
-        st.write(f"{func_name}(): {len(result)}개 → {list(result)[:5]}")
-    except Exception as e:
-        st.write(f"{func_name}(): 실패 - {e}")
-        
 st.set_page_config(page_title="드림팀 스크리너", page_icon="📈", layout="wide")
 
 # ─────────────────────────────────────────────
@@ -220,7 +166,8 @@ _TICKER_NAMES = {
 def get_ticker_list(market="KOSPI", lookback=10):
     """
     1) pykrx 정상 동작 시 그대로 사용
-    2) 실패 시 내장 종목코드 반환 (시총 상위 종목 위주)
+    2) 실패 시 tickers.json 파일에서 로드
+    3) 파일도 없으면 내장 종목코드 반환
     """
     for i in range(lookback):
         date_str = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
@@ -231,7 +178,19 @@ def get_ticker_list(market="KOSPI", lookback=10):
         except Exception:
             pass
 
-    # fallback: 내장 종목코드
+    # fallback 1: tickers.json
+    try:
+        import json, os
+        json_path = os.path.join(os.path.dirname(__file__), "tickers.json")
+        with open(json_path, encoding="utf-8") as f:
+            data = json.load(f)
+        tickers = data.get(market, [])
+        if tickers:
+            return tickers
+    except Exception:
+        pass
+
+    # fallback 2: 내장 종목코드
     if market == "KOSPI":
         return list(_KOSPI_TICKERS)
     else:
