@@ -7,6 +7,35 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
+
+# ── 디버그 4단계 ──
+import requests
+st.subheader("🔍 KRX 직접 요청 디버그")
+
+try:
+    OTP_URL = "http://data.krx.co.kr/comm/fileDn/GenerateOTP/generate.cmd"
+    HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "http://data.krx.co.kr/"}
+    otp_params = {
+        "bld":      "dbms/MDC/STAT/standard/MDCSTAT01501",
+        "mktId":    "STK",
+        "trdDd":    "20260318",
+        "share":    "1",
+        "money":    "1",
+        "csvxls_isNo": "false",
+    }
+    resp = requests.post(OTP_URL, data=otp_params, headers=HEADERS, timeout=10)
+    st.write(f"OTP 상태코드: {resp.status_code}")
+    st.write(f"OTP 응답: {resp.text[:200]}")
+    
+    # x-deny-reason 헤더 확인 (차단 여부)
+    st.write(f"응답 헤더: {dict(resp.headers)}")
+
+except Exception as e:
+    st.write(f"요청 자체 실패: {type(e).__name__}: {e}")
+
+
+
+
 st.set_page_config(page_title="드림팀 스크리너", page_icon="📈", layout="wide")
 
 # ─────────────────────────────────────────────
