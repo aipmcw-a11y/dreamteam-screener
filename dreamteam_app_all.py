@@ -7,6 +7,17 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
+# ── 디버그 6단계 ──
+from pykrx import stock as _s
+st.subheader("🔍 OHLCV 디버그")
+try:
+    df = _s.get_market_ohlcv_by_date("20260301", "20260318", "005930")
+    st.write(f"삼성전자 OHLCV shape: {df.shape}")
+    st.write(f"컬럼: {df.columns.tolist()}")
+    st.dataframe(df.tail(3))
+except Exception as e:
+    st.write(f"실패: {e}")
+
 # ── 디버그 5단계 ──
 from pykrx import stock as _s
 from datetime import datetime, timedelta
