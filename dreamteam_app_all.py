@@ -6,6 +6,19 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
+
+# ── 디버그 7단계 ──
+from pykrx import stock as _s
+st.subheader("🔍 시장 전체 OHLCV 디버그")
+
+for d in ["20260318", "20260317", "20260314"]:
+    try:
+        df = _s.get_market_ohlcv(d, market="KOSPI")
+        st.write(f"{d}: shape={df.shape}, index샘플={df.index[:3].tolist()}")
+        st.dataframe(df.head(3))
+    except Exception as e:
+        st.write(f"{d}: 실패 - {type(e).__name__}: {e}")
+
 st.set_page_config(page_title="드림팀 스크리너", page_icon="📈", layout="wide")
 
 # ─────────────────────────────────────────────
