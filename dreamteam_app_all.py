@@ -6,40 +6,7 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
-
-# ── 디버그 6단계 ──
-from pykrx import stock as _s
-st.subheader("🔍 OHLCV 디버그")
-try:
-    df = _s.get_market_ohlcv_by_date("20260301", "20260318", "005930")
-    st.write(f"삼성전자 OHLCV shape: {df.shape}")
-    st.write(f"컬럼: {df.columns.tolist()}")
-    st.dataframe(df.tail(3))
-except Exception as e:
-    st.write(f"실패: {e}")
-
-# ── 디버그 5단계 ──
-from pykrx import stock as _s
-from datetime import datetime, timedelta
-
-st.subheader("🔍 종목 로드 디버그")
-today = datetime.now().strftime("%Y%m%d")
-st.write(f"오늘 날짜: {today}")
-
-# 오늘 + 최근 5일 시도
-for i in range(5):
-    d = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
-    try:
-        syms = _s.get_market_ticker_list(d, market="KOSPI")
-        st.write(f"{d}: KOSPI {len(syms)}개")
-    except Exception as e:
-        st.write(f"{d}: 실패 - {e}")
-
-
 st.set_page_config(page_title="드림팀 스크리너", page_icon="📈", layout="wide")
-
-
-
 
 # ─────────────────────────────────────────────
 # pykrx 버전 호환 헬퍼 함수
@@ -57,6 +24,33 @@ def normalize_ohlcv(df):
     if rename_targets:
         df = df.rename(columns=rename_targets)
     return df
+
+def get_ticker_list(market="KOSPI", lookback=10):
+    """
+    pykrx get_market_ticker_list 가 0개를 반환할 때를 대비해
+    get_market_ohlcv (시장 전체 하루치) 의 index 에서 종목코드를 추출.
+    """
+    # 1) pykrx 정상 시도
+    for i in range(lookback):
+        date_str = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
+        try:
+            syms = stock.get_market_ticker_list(date_str, market=market)
+            if syms and len(syms) > 0:
+                return list(syms)
+        except Exception:
+            pass
+
+    # 2) get_market_ohlcv 로 우회
+    for i in range(lookback):
+        date_str = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
+        try:
+            df = stock.get_market_ohlcv(date_str, market=market)
+            if df is not None and len(df) > 0:
+                return list(df.index.astype(str).str.zfill(6))
+        except Exception:
+            pass
+
+    return []
 
 def fetch_market_cap_by_volume(symbols, market="KOSPI", lookback=10):
     """
@@ -330,12 +324,12 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
 
     all_symbols = []
     if "KOSPI" in market_options:
-        kospi_symbols = pykrx_stock.get_market_ticker_list(today, market="KOSPI")
+        kospi_symbols = get_ticker_list("KOSPI")
         all_symbols.extend(kospi_symbols)
         st.info(f"KOSPI {len(kospi_symbols)}개 종목 로드")
 
     if "KOSDAQ" in market_options:
-        kosdaq_symbols = pykrx_stock.get_market_ticker_list(today, market="KOSDAQ")
+        kosdaq_symbols = get_ticker_list("KOSDAQ")
         all_symbols.extend(kosdaq_symbols)
         st.info(f"KOSDAQ {len(kosdaq_symbols)}개 종목 로드")
 
