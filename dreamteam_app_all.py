@@ -6,6 +6,40 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
+# ── 디버그 9단계 ──
+from pykrx import stock as _s
+
+st.subheader("🔍 인덱스 종목 탐색")
+
+# 코스피/코스닥 인덱스 티커 목록 조회
+try:
+    # 1) 전체 인덱스 리스트
+    idx_list = _s.get_index_ticker_list(market="KOSPI")
+    st.write(f"KOSPI 인덱스 목록: {idx_list[:10]}")
+except Exception as e:
+    st.write(f"get_index_ticker_list(market=KOSPI) 실패: {e}")
+
+try:
+    idx_list2 = _s.get_index_ticker_list(market="KRX")
+    st.write(f"KRX 인덱스 목록: {idx_list2[:10]}")
+except Exception as e:
+    st.write(f"get_index_ticker_list(market=KRX) 실패: {e}")
+
+# 2) 코스피 200 구성종목 시도 (티커 "1028" = 코스피200)
+for idx_ticker in ["1028", "2203", "1001", "2001"]:
+    try:
+        members = _s.get_index_portfolio_deposit_file(idx_ticker)
+        st.write(f"인덱스 {idx_ticker}: {len(members)}개 → {list(members)[:5]}")
+    except Exception as e:
+        st.write(f"인덱스 {idx_ticker} 실패: {e}")
+
+# 3) get_market_ohlcv_by_ticker 시도 (날짜 범위로 전종목)
+try:
+    df = _s.get_market_ohlcv_by_ticker("20260318", market="KOSPI")
+    st.write(f"get_market_ohlcv_by_ticker KOSPI: shape={df.shape}, 샘플={df.index[:5].tolist()}")
+except Exception as e:
+    st.write(f"get_market_ohlcv_by_ticker 실패: {e}")
+    
 # ── 디버그 8단계 ──
 from pykrx import stock as _s
 import inspect
