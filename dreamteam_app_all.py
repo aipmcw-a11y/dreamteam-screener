@@ -6,6 +6,31 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
+# ── 디버그 2단계 ──
+from pykrx import stock as _s
+import requests
+
+st.subheader("🔍 pykrx 원시 데이터 확인")
+
+# pykrx가 내부적으로 호출하는 URL 직접 조회
+try:
+    # 실제 컬럼 확인을 위해 예외 발생 전 raw DataFrame 보기
+    import pykrx.stock.market.ticker as _ticker
+    _today = "20260318"
+    
+    # OHLCV는 정상인지 확인
+    df_ohlcv = _s.get_market_ohlcv_by_date("20260318", "20260318", "005930")
+    st.write(f"삼성전자 OHLCV 컬럼: {df_ohlcv.columns.tolist()}")
+    st.write(df_ohlcv.tail(2))
+    
+except Exception as e:
+    st.write(f"오류: {e}")
+
+# pykrx 버전 확인
+import pykrx
+st.write(f"pykrx 버전: {pykrx.__version__}")
+
+
 # ── 디버그용 (확인 후 삭제) ──
 from pykrx import stock as _s
 from datetime import datetime, timedelta
