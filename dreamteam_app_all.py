@@ -6,34 +6,26 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
-# ── 디버그 11단계 ──
-import requests
-st.subheader("🔍 외부 종목명 API 테스트")
-
-# 네이버 금융 API 테스트
-for code in ["008970", "005160", "042000"]:
-    try:
-        url = f"https://m.stock.naver.com/api/stock/{code}/basic"
-        r = requests.get(url, timeout=5)
-        st.write(f"네이버 {code}: status={r.status_code}, 응답={r.text[:100]}")
-    except Exception as e:
-        st.write(f"네이버 {code}: 실패 - {e}")
-        
-# ── 디버그 10단계 ──
-from pykrx import stock as _s
-st.subheader("🔍 종목명 API 디버그")
-for code in ["008970", "005160", "042000", "051630", "004650"]:
-    try:
-        name = _s.get_market_ticker_name(code)
-        st.write(f"{code}: '{name}'")
-    except Exception as e:
-        st.write(f"{code}: 실패 - {e}")
-        
 st.set_page_config(page_title="드림팀 스크리너", page_icon="📈", layout="wide")
 
 # ─────────────────────────────────────────────
 # pykrx 버전 호환 헬퍼 함수
 # ─────────────────────────────────────────────
+def get_ticker_name_naver(symbol):
+    """네이버 금융 API로 종목명 조회 (pykrx 대체)"""
+    try:
+        import requests as _req
+        url = f"https://m.stock.naver.com/api/stock/{symbol}/basic"
+        r = _req.get(url, timeout=3)
+        if r.status_code == 200:
+            data = r.json()
+            name = data.get("stockName", "")
+            if name:
+                return name
+    except Exception:
+        pass
+    return None
+
 def normalize_ohlcv(df):
     """영문 컬럼(신버전) → 한글 컬럼으로 통일"""
     col_map = {
@@ -267,8 +259,18 @@ class DreamTeamScreener:
         self.stock_info = {}
 
     def get_company_name(self, symbol):
-        # 내장 딕셔너리 우선, 없으면 stock_info, 없으면 코드 그대로
-        return _TICKER_NAMES.get(symbol, self.stock_info.get(symbol, symbol))
+        # 1) 내장 딕셔너리
+        if symbol in _TICKER_NAMES:
+            return _TICKER_NAMES[symbol]
+        # 2) 캐시(stock_info)
+        if symbol in self.stock_info and self.stock_info[symbol] != symbol:
+            return self.stock_info[symbol]
+        # 3) 네이버 API (캐시에 저장)
+        name = get_ticker_name_naver(symbol)
+        if name:
+            self.stock_info[symbol] = name
+            return name
+        return symbol
 
     def calculate_dmi_adx(self, data, period=14):
         """DMI와 ADX 계산 (EMA 방식)"""
@@ -528,13 +530,19 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
     results      = []
     total        = len(screener.stock_symbols)
 
-    st.info("종목명 로딩 중...")
-    name_progress = st.progress(0)
-    for idx, symbol in enumerate(screener.stock_symbols):
-        screener.get_company_name(symbol)
-        if idx % 10 == 0:
-            name_progress.progress((idx + 1) / total)
-    name_progress.empty()
+    # 종목명 미리 로드: 내장 딕셔너리에 없는 종목만 네이버 API 조회
+    missing_names = [s for s in screener.stock_symbols if s not in _TICKER_NAMES]
+    if missing_names:
+        st.info(f"종목명 로딩 중... (미등록 {len(missing_names)}개 네이버 조회)")
+        name_progress = st.progress(0)
+        for idx, symbol in enumerate(missing_names):
+            if symbol not in screener.stock_info or screener.stock_info[symbol] == symbol:
+                name = get_ticker_name_naver(symbol)
+                if name:
+                    screener.stock_info[symbol] = name
+            if idx % 20 == 0:
+                name_progress.progress((idx + 1) / len(missing_names))
+        name_progress.empty()
 
     for i, symbol in enumerate(screener.stock_symbols):
         company_name = screener.get_company_name(symbol)
@@ -552,17 +560,14 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
         st.info("종목명 업데이트 중...")
         for idx, row in df.iterrows():
             if not row['company_name'] or row['company_name'] == row['symbol']:
-                # 1) 내장 딕셔너리 우선
+                # 1) 내장 딕셔너리
                 if row['symbol'] in _TICKER_NAMES:
                     df.at[idx, 'company_name'] = _TICKER_NAMES[row['symbol']]
                 else:
-                    # 2) pykrx fallback
-                    try:
-                        name = stock.get_market_ticker_name(row['symbol'])
-                        if name and name != row['symbol']:
-                            df.at[idx, 'company_name'] = name
-                    except Exception:
-                        pass
+                    # 2) 네이버 API
+                    name = get_ticker_name_naver(row['symbol'])
+                    if name:
+                        df.at[idx, 'company_name'] = name
 
         df = df.sort_values(
             ['both_conditions_met', 'condition1_met', 'condition2_met'],
@@ -574,7 +579,11 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
         if len(both) > 0:
             st.success(f"🎯 두 조건 모두 충족: {len(both)}개 종목")
             for _, row in both.iterrows():
-                company_name = _TICKER_NAMES.get(row['symbol'], row['company_name'])
+                company_name = (
+                    _TICKER_NAMES.get(row['symbol'])
+                    or get_ticker_name_naver(row['symbol'])
+                    or row['company_name']
+                )
 
                 with st.expander(f"✨ {company_name} ({row['symbol']}) - {row['current_price']:,.0f}원"):
                     col1, col2 = st.columns(2)
