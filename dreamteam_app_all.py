@@ -2,39 +2,9 @@ import streamlit as st
 from pykrx import stock
 import pandas as pd
 import numpy as np
-import requests
 from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
-
-
-# ── 디버그 4단계 ──
-import requests
-st.subheader("🔍 KRX 직접 요청 디버그")
-
-try:
-    OTP_URL = "http://data.krx.co.kr/comm/fileDn/GenerateOTP/generate.cmd"
-    HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "http://data.krx.co.kr/"}
-    otp_params = {
-        "bld":      "dbms/MDC/STAT/standard/MDCSTAT01501",
-        "mktId":    "STK",
-        "trdDd":    "20260318",
-        "share":    "1",
-        "money":    "1",
-        "csvxls_isNo": "false",
-    }
-    resp = requests.post(OTP_URL, data=otp_params, headers=HEADERS, timeout=10)
-    st.write(f"OTP 상태코드: {resp.status_code}")
-    st.write(f"OTP 응답: {resp.text[:200]}")
-    
-    # x-deny-reason 헤더 확인 (차단 여부)
-    st.write(f"응답 헤더: {dict(resp.headers)}")
-
-except Exception as e:
-    st.write(f"요청 자체 실패: {type(e).__name__}: {e}")
-
-
-
 
 st.set_page_config(page_title="드림팀 스크리너", page_icon="📈", layout="wide")
 
@@ -55,92 +25,46 @@ def normalize_ohlcv(df):
         df = df.rename(columns=rename_targets)
     return df
 
-def fetch_market_cap_df(market="KOSPI", lookback=10):
+def fetch_market_cap_by_volume(symbols, market="KOSPI", lookback=10):
     """
-    KRX 에 직접 HTTP 요청해서 종목별 시총 DataFrame 반환.
-    pykrx 버전에 전혀 영향받지 않음.
-    반환: index=종목코드(6자리), '시가총액' 컬럼 포함 DataFrame
+    pykrx OHLCV 데이터의 거래대금(종가×거래량)으로 대형주 순서를 근사.
+    KRX 직접 접근 불필요 — Streamlit Cloud 환경에서도 동작.
+    반환: 거래대금 내림차순으로 정렬된 symbols 리스트
     """
-    # KRX OTP 발급 → 데이터 다운로드 2단계 방식
-    OTP_URL  = "http://data.krx.co.kr/comm/fileDn/GenerateOTP/generate.cmd"
-    DATA_URL = "http://data.krx.co.kr/comm/fileDn/download_csv/download.cmd"
-
-    HEADERS = {
-        "User-Agent": "Mozilla/5.0",
-        "Referer":    "http://data.krx.co.kr/",
-    }
-
-    # 시장 코드 매핑
-    mkt_id = "STK" if market == "KOSPI" else "KSQ"
-
+    vol_map = {}
     for i in range(lookback):
         date_str = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
         try:
-            # 1단계: OTP 발급
-            otp_params = {
-                "bld":      "dbms/MDC/STAT/standard/MDCSTAT01501",
-                "mktId":    mkt_id,
-                "trdDd":    date_str,
-                "share":    "1",
-                "money":    "1",
-                "csvxls_isNo": "false",
-            }
-            otp_resp = requests.post(OTP_URL, data=otp_params, headers=HEADERS, timeout=10)
-            otp_code = otp_resp.text.strip()
-
-            if not otp_code:
-                continue
-
-            # 2단계: CSV 다운로드
-            data_resp = requests.post(
-                DATA_URL,
-                data={"code": otp_code},
-                headers=HEADERS,
-                timeout=15
-            )
-            data_resp.encoding = "euc-kr"
-
-            from io import StringIO
-            df = pd.read_csv(StringIO(data_resp.text), thousands=",")
-
-            if df.empty:
-                continue
-
-            # 컬럼 확인 및 정리
-            # 종목코드 컬럼 찾기 (여러 이름 가능)
-            code_col = None
-            for c in ['종목코드', 'ISU_SRT_CD', '단축코드']:
-                if c in df.columns:
-                    code_col = c
-                    break
-
-            cap_col = None
-            for c in ['시가총액', 'MKTCAP', '시가 총액']:
-                if c in df.columns:
-                    cap_col = c
-                    break
-
-            if code_col is None or cap_col is None:
-                continue
-
-            df[code_col] = df[code_col].astype(str).str.zfill(6)
-            df = df.set_index(code_col)
-            df = df.rename(columns={cap_col: '시가총액'})
-
-            # 시가총액을 숫자로 변환
-            df['시가총액'] = pd.to_numeric(
-                df['시가총액'].astype(str).str.replace(',', '').str.replace(' ', ''),
-                errors='coerce'
-            )
-            df = df.dropna(subset=['시가총액'])
-
-            if len(df) > 0:
-                return df
-
+            # pykrx로 시장 전체 일봉 (단일 날짜)
+            df = stock.get_market_ohlcv_by_date(date_str, date_str, "005930")
+            # 위가 성공하면 그 날짜가 거래일 — 전체 종목 거래대금 조회
+            # pykrx 에는 시장 전체 당일 OHLCV API 없으므로
+            # 샘플 종목들의 개별 조회 대신, 종목 리스트 순서를 유지하되
+            # 시가총액 근사를 위해 거래대금 상위 종목 일부만 사전 조회
+            break
         except Exception:
             continue
 
-    return None
+    # 전체 심볼을 거래대금으로 정렬하려면 개별 조회가 필요해 너무 느림.
+    # 대신 pykrx get_market_ohlcv (시장 전체 하루치)를 사용
+    for i in range(lookback):
+        date_str = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
+        try:
+            df = stock.get_market_ohlcv(date_str, market=market)
+            df = normalize_ohlcv(df)
+            if df.empty:
+                continue
+            # 거래대금 = 종가 × 거래량
+            df['거래대금'] = df['종가'] * df['거래량']
+            df = df.sort_values('거래대금', ascending=False)
+            sym_set = set(symbols)
+            sorted_syms = [s for s in df.index if s in sym_set]
+            # 정렬 안 된 나머지 추가
+            sorted_syms += [s for s in symbols if s not in set(sorted_syms)]
+            return sorted_syms
+        except Exception:
+            continue
+    return symbols
 
 
 class DreamTeamScreener:
@@ -384,34 +308,19 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
 
     all_symbols = list(set(all_symbols))
 
-    # 시총 순 정렬 (KRX 직접 요청)
-    st.info("시가총액 순으로 정렬 중...")
+    # 거래대금 기준 대형주 우선 정렬
+    st.info("거래대금 기준으로 정렬 중...")
     try:
-        frames = []
-        if "KOSPI" in market_options:
-            df_kospi = fetch_market_cap_df("KOSPI")
-            if df_kospi is not None:
-                frames.append(df_kospi)
-        if "KOSDAQ" in market_options:
-            df_kosdaq = fetch_market_cap_df("KOSDAQ")
-            if df_kosdaq is not None:
-                frames.append(df_kosdaq)
-
-        if not frames:
-            raise ValueError("시총 데이터를 불러올 수 없습니다.")
-
-        cap_df = pd.concat(frames)
-
-        if '시가총액' not in cap_df.columns:
-            raise ValueError(f"시가총액 컬럼 없음. 실제 컬럼: {cap_df.columns.tolist()}")
-
-        cap_df         = cap_df.sort_values('시가총액', ascending=False)
-        all_set        = set(all_symbols)
-        sorted_symbols = [s for s in cap_df.index if s in all_set][:max_stocks]
-        st.success(f"시총 기준 정렬 완료 ({len(sorted_symbols)}개)")
-
+        sorted_all = []
+        for mkt in market_options:
+            sorted_mkt = fetch_market_cap_by_volume(all_symbols, market=mkt)
+            sorted_all += [s for s in sorted_mkt if s not in sorted_all]
+        # 정렬 안 된 나머지 추가
+        sorted_all += [s for s in all_symbols if s not in sorted_all]
+        sorted_symbols = sorted_all[:max_stocks]
+        st.success(f"거래대금 기준 정렬 완료 ({len(sorted_symbols)}개)")
     except Exception as e:
-        st.warning(f"시총 정렬 실패: {e}. 원본 순서로 진행합니다.")
+        st.warning(f"정렬 실패: {e}. 원본 순서로 진행합니다.")
         sorted_symbols = all_symbols[:max_stocks]
 
     screener = DreamTeamScreener()
