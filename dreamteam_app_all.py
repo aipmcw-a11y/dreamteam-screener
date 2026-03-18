@@ -6,6 +6,26 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
+# ── 디버그 8단계 ──
+from pykrx import stock as _s
+import inspect
+
+st.subheader("🔍 pykrx 함수 탐색")
+
+# ticker/list 관련 함수 목록
+funcs = [name for name in dir(_s) if any(k in name.lower() for k in ['ticker','list','index','constituent'])]
+st.write("관련 함수 목록:", funcs)
+
+# get_index_ticker_list 시도 (코스피200 등 인덱스 구성종목)
+st.write("---")
+for func_name in ['get_index_ticker_list', 'get_market_ticker_list']:
+    try:
+        func = getattr(_s, func_name)
+        result = func("20260318")
+        st.write(f"{func_name}(): {len(result)}개 → {list(result)[:5]}")
+    except Exception as e:
+        st.write(f"{func_name}(): 실패 - {e}")
+        
 st.set_page_config(page_title="드림팀 스크리너", page_icon="📈", layout="wide")
 
 # ─────────────────────────────────────────────
