@@ -6,6 +6,16 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
+# ── 디버그 10단계 ──
+from pykrx import stock as _s
+st.subheader("🔍 종목명 API 디버그")
+for code in ["008970", "005160", "042000", "051630", "004650"]:
+    try:
+        name = _s.get_market_ticker_name(code)
+        st.write(f"{code}: '{name}'")
+    except Exception as e:
+        st.write(f"{code}: 실패 - {e}")
+        
 st.set_page_config(page_title="드림팀 스크리너", page_icon="📈", layout="wide")
 
 # ─────────────────────────────────────────────
