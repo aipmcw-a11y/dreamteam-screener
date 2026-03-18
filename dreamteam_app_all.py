@@ -6,7 +6,29 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
+
+# ── 디버그 5단계 ──
+from pykrx import stock as _s
+from datetime import datetime, timedelta
+
+st.subheader("🔍 종목 로드 디버그")
+today = datetime.now().strftime("%Y%m%d")
+st.write(f"오늘 날짜: {today}")
+
+# 오늘 + 최근 5일 시도
+for i in range(5):
+    d = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
+    try:
+        syms = _s.get_market_ticker_list(d, market="KOSPI")
+        st.write(f"{d}: KOSPI {len(syms)}개")
+    except Exception as e:
+        st.write(f"{d}: 실패 - {e}")
+
+
 st.set_page_config(page_title="드림팀 스크리너", page_icon="📈", layout="wide")
+
+
+
 
 # ─────────────────────────────────────────────
 # pykrx 버전 호환 헬퍼 함수
