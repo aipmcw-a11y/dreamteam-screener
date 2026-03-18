@@ -6,6 +6,19 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
+# ── 디버그 11단계 ──
+import requests
+st.subheader("🔍 외부 종목명 API 테스트")
+
+# 네이버 금융 API 테스트
+for code in ["008970", "005160", "042000"]:
+    try:
+        url = f"https://m.stock.naver.com/api/stock/{code}/basic"
+        r = requests.get(url, timeout=5)
+        st.write(f"네이버 {code}: status={r.status_code}, 응답={r.text[:100]}")
+    except Exception as e:
+        st.write(f"네이버 {code}: 실패 - {e}")
+        
 # ── 디버그 10단계 ──
 from pykrx import stock as _s
 st.subheader("🔍 종목명 API 디버그")
