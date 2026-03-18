@@ -6,6 +6,29 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
+# ── 디버그 3단계 ──
+from pykrx import stock as _s
+import pandas as pd
+
+st.subheader("🔍 시총 raw 확인")
+
+_today = "20260318"
+
+# try/except 없이 직접 실행해서 실제 반환값 확인
+try:
+    df = _s.get_market_cap_by_ticker(_today, market="KOSPI")
+    st.write(f"shape: {df.shape}")
+    st.write(f"columns: {df.columns.tolist()}")
+    st.write(f"index type: {type(df.index)}")
+    st.write(f"index 앞 3개: {df.index[:3].tolist()}")
+    st.dataframe(df.head(3))
+except Exception as e:
+    st.write(f"에러 타입: {type(e).__name__}")
+    st.write(f"에러 전문: {str(e)}")
+    # 에러가 나도 반환값이 있을 수 있으니 확인
+    import traceback
+    st.code(traceback.format_exc())
+    
 # ── 디버그 2단계 ──
 from pykrx import stock as _s
 import requests
