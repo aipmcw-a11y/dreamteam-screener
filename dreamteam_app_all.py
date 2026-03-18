@@ -6,6 +6,32 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
+# ── 디버그용 (확인 후 삭제) ──
+from pykrx import stock as _s
+from datetime import datetime, timedelta
+
+st.subheader("🔍 pykrx 디버그")
+_today = datetime.now().strftime("%Y%m%d")
+_yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+_3days = (datetime.now() - timedelta(days=3)).strftime("%Y%m%d")
+
+for _date in [_today, _yesterday, _3days]:
+    st.write(f"--- {_date} ---")
+    
+    # 신버전 시도
+    try:
+        df1 = _s.get_market_cap_by_ticker(_date, market="KOSPI")
+        st.write(f"get_market_cap_by_ticker: shape={df1.shape}, columns={df1.columns.tolist()[:5]}")
+    except Exception as e:
+        st.write(f"get_market_cap_by_ticker 실패: {e}")
+    
+    # 구버전 시도
+    try:
+        df2 = _s.get_market_cap(_date, market="KOSPI")
+        st.write(f"get_market_cap: shape={df2.shape}, columns={df2.columns.tolist()[:5]}, index샘플={df2.index[:3].tolist()}")
+    except Exception as e:
+        st.write(f"get_market_cap 실패: {e}")
+
 st.set_page_config(page_title="드림팀 스크리너", page_icon="📈", layout="wide")
 
 # ─────────────────────────────────────────────
