@@ -32,6 +32,18 @@ def normalize_market_cap(df):
         df = df.rename(columns={'Marcap': '시가총액'})
     return df
 
+def get_last_trading_day(market="KOSPI", lookback=10):
+    """오늘이 휴장일이면 가장 최근 거래일을 반환"""
+    for i in range(lookback):
+        date_str = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
+        try:
+            df = stock.get_market_cap(date_str, market=market)
+            if df is not None and len(df) > 0:
+                return date_str
+        except:
+            continue
+    return datetime.now().strftime("%Y%m%d")
+
 
 class DreamTeamScreener:
     def __init__(self):
@@ -290,17 +302,24 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
     
     try:
         cap_df = None
+        # ── 휴장일 대비: 가장 최근 거래일 자동 탐색 ──
+        trading_day_kospi  = get_last_trading_day("KOSPI")
+        trading_day_kosdaq = get_last_trading_day("KOSDAQ")
+
         if "KOSPI" in market_options and "KOSDAQ" in market_options:
-            cap_kospi = pykrx_stock.get_market_cap(today, market="KOSPI")
-            cap_kosdaq = pykrx_stock.get_market_cap(today, market="KOSDAQ")
+            cap_kospi  = pykrx_stock.get_market_cap(trading_day_kospi,  market="KOSPI")
+            cap_kosdaq = pykrx_stock.get_market_cap(trading_day_kosdaq, market="KOSDAQ")
             cap_df = pd.concat([cap_kospi, cap_kosdaq])
         elif "KOSPI" in market_options:
-            cap_df = pykrx_stock.get_market_cap(today, market="KOSPI")
+            cap_df = pykrx_stock.get_market_cap(trading_day_kospi,  market="KOSPI")
         elif "KOSDAQ" in market_options:
-            cap_df = pykrx_stock.get_market_cap(today, market="KOSDAQ")
-        
+            cap_df = pykrx_stock.get_market_cap(trading_day_kosdaq, market="KOSDAQ")
+
         # ── [방법 B] 시총 컬럼명 정규화 ──
         cap_df = normalize_market_cap(cap_df)
+
+        if cap_df is None or len(cap_df) == 0 or '시가총액' not in cap_df.columns:
+            raise ValueError("시총 데이터를 불러올 수 없습니다.")
 
         cap_df = cap_df.sort_values('시가총액', ascending=False)
         sorted_symbols = [s for s in cap_df.index if s in all_symbols][:max_stocks]
