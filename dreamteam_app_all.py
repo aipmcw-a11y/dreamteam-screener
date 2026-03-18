@@ -8,6 +8,31 @@ warnings.filterwarnings('ignore')
 
 st.set_page_config(page_title="드림팀 스크리너", page_icon="📈", layout="wide")
 
+# ─────────────────────────────────────────────
+# pykrx 버전 호환 헬퍼 함수
+# ─────────────────────────────────────────────
+def normalize_ohlcv(df):
+    """영문 컬럼(신버전) → 한글 컬럼으로 통일"""
+    col_map = {
+        'Open':   '시가',
+        'High':   '고가',
+        'Low':    '저가',
+        'Close':  '종가',
+        'Volume': '거래량',
+    }
+    # 영문 컬럼이 존재할 때만 rename
+    rename_targets = {k: v for k, v in col_map.items() if k in df.columns}
+    if rename_targets:
+        df = df.rename(columns=rename_targets)
+    return df
+
+def normalize_market_cap(df):
+    """시총 컬럼명 통일 (Marcap → 시가총액)"""
+    if 'Marcap' in df.columns and '시가총액' not in df.columns:
+        df = df.rename(columns={'Marcap': '시가총액'})
+    return df
+
+
 class DreamTeamScreener:
     def __init__(self):
         self.stock_symbols = []
@@ -120,11 +145,9 @@ class DreamTeamScreener:
     
     def get_weekly_data(self, daily_data):
         """일봉을 주봉으로 변환 (실제 거래일 기준)"""
-        # 주차 번호 추가 (월요일 시작 기준)
         daily_data_copy = daily_data.copy()
         daily_data_copy['week'] = daily_data_copy.index.to_series().dt.to_period('W-FRI')
         
-        # 주별로 집계
         weekly = daily_data_copy.groupby('week').agg({
             '시가': 'first',
             '고가': 'max',
@@ -133,7 +156,6 @@ class DreamTeamScreener:
             '거래량': 'sum'
         })
         
-        # 인덱스를 datetime으로 변환 (각 주의 마지막 거래일)
         weekly.index = daily_data_copy.groupby('week').apply(lambda x: x.index[-1])
         
         return weekly.dropna()
@@ -151,6 +173,9 @@ class DreamTeamScreener:
                 end_date.strftime("%Y%m%d"), 
                 symbol
             )
+
+            # ── [방법 B] 컬럼명 정규화 ──
+            daily_data = normalize_ohlcv(daily_data)
             
             if len(daily_data) < 50:
                 return None
@@ -246,7 +271,6 @@ st.sidebar.warning(f"⚠️ 예상: {estimated_stocks}개 종목 / 약 {int(esti
 if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
     all_symbols = []
     
-    # KOSPI/KOSDAQ 전체
     from pykrx import stock as pykrx_stock
     today = datetime.now().strftime("%Y%m%d")
     
@@ -260,14 +284,11 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
         all_symbols.extend(kosdaq_symbols)
         st.info(f"KOSDAQ {len(kosdaq_symbols)}개 종목 로드")
     
-    # 중복 제거
     all_symbols = list(set(all_symbols))
     
-    # 시총순 정렬
     st.info("시가총액 순으로 정렬 중...")
     
     try:
-        # 시장별 시총 데이터 가져오기
         cap_df = None
         if "KOSPI" in market_options and "KOSDAQ" in market_options:
             cap_kospi = pykrx_stock.get_market_cap(today, market="KOSPI")
@@ -278,7 +299,9 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
         elif "KOSDAQ" in market_options:
             cap_df = pykrx_stock.get_market_cap(today, market="KOSDAQ")
         
-        # 시총 기준 정렬
+        # ── [방법 B] 시총 컬럼명 정규화 ──
+        cap_df = normalize_market_cap(cap_df)
+
         cap_df = cap_df.sort_values('시가총액', ascending=False)
         sorted_symbols = [s for s in cap_df.index if s in all_symbols][:max_stocks]
         
@@ -286,7 +309,6 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
         st.warning(f"시총 정렬 실패: {str(e)}. 원본 순서로 진행합니다.")
         sorted_symbols = all_symbols[:max_stocks]
     
-    # 스크리너 초기화
     screener = DreamTeamScreener()
     screener.stock_symbols = sorted_symbols[:max_stocks]
     
@@ -298,7 +320,6 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
     results = []
     total = len(screener.stock_symbols)
     
-    # 종목명 미리 로드 (속도 향상)
     st.info("종목명 로딩 중...")
     name_progress = st.progress(0)
     for idx, symbol in enumerate(screener.stock_symbols):
@@ -321,7 +342,6 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
     if len(results) > 0:
         df = pd.DataFrame(results)
         
-        # 종목명 채우기
         st.info("종목명 업데이트 중...")
         for idx, row in df.iterrows():
             if not row['company_name'] or row['company_name'] == row['symbol']:
@@ -335,13 +355,11 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
         df = df.sort_values(['both_conditions_met', 'condition1_met', 'condition2_met'], 
                           ascending=False)
         
-        # 두 조건 모두 충족
         both = df[df['both_conditions_met'] == True]
         if len(both) > 0:
             st.success(f"🎯 두 조건 모두 충족: {len(both)}개 종목")
             
             for _, row in both.iterrows():
-                # 종목명 다시 가져오기
                 try:
                     company_name = stock.get_market_ticker_name(row['symbol'])
                     if not company_name or company_name == row['symbol']:
@@ -369,40 +387,32 @@ if st.sidebar.button("🔍 스크리닝 시작", type="primary"):
         else:
             st.info("두 조건 모두 충족하는 종목이 없습니다.")
         
-        # 조건 1만 충족
         cond1 = df[(df['condition1_met'] == True) & (df['condition2_met'] == False)]
         if len(cond1) > 0:
             st.warning(f"⚠️ 조건 1만 충족: {len(cond1)}개 종목")
-            # 표시용 데이터프레임 준비
             display_df = cond1[['company_name', 'symbol', 'current_price', 'signal_date', 'days_ago']].copy()
             display_df.columns = ['종목명', '코드', '현재가', '신호일', '경과일']
             st.dataframe(display_df.head(10))
         
-        # 조건 2만 충족
         cond2 = df[(df['condition1_met'] == False) & (df['condition2_met'] == True)]
         if len(cond2) > 0:
             st.info(f"ℹ️ 조건 2만 충족: {len(cond2)}개 종목")
-            # 표시용 데이터프레임 준비
             display_df = cond2[['company_name', 'symbol', 'current_price', 'macd_change']].copy()
             display_df.columns = ['종목명', '코드', '현재가', 'MACD변화']
             st.dataframe(display_df.head(10))
         
-        # CSV 다운로드 - 한글 인코딩 개선
         df_download = df.copy()
         
-        # Boolean을 명확한 한글로 변환
         bool_columns = ['condition1_met', 'condition2_met', 'both_conditions_met']
         for col in bool_columns:
             df_download[col] = df_download[col].map({True: '충족', False: '미충족'})
         
-        # 소수점 자릿수 제한
         float_columns = ['current_price', 'current_adx', 'current_di_plus', 'current_di_minus', 
                         'weekly_macd_current', 'weekly_macd_previous', 'macd_change', 'signal_adx']
         for col in float_columns:
             if col in df_download.columns:
                 df_download[col] = df_download[col].round(2)
         
-        # CSV 저장 (Excel 호환성 최대화)
         csv = df_download.to_csv(index=False, encoding='utf-8-sig', sep=',', lineterminator='\n')
         
         st.download_button(
